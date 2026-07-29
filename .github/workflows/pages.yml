@@ -35,6 +35,12 @@ jobs:
       - name: Install Bower
         run: npm install --global bower@1.8.14
 
+      - name: Rewrite old GitHub SSH dependencies
+        run: |
+          git config --global --add url."https://github.com/".insteadOf "git@github.com:"
+          git config --global --add url."https://github.com/".insteadOf "ssh://git@github.com/"
+          git config --global --get-regexp '^url\..*\.insteadof$'
+
       - name: Install Bower dependencies
         run: bower install --config.interactive=false
 
