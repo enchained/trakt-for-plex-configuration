@@ -44,8 +44,11 @@ jobs:
       - name: Install Bower dependencies
         run: bower install --config.interactive=false
 
+      - name: Install Grunt CLI
+        run: npm install --global grunt-cli@1.5.0
+
       - name: Build site
-        run: npx grunt build
+        run: grunt build
 
       - name: Disable Jekyll
         run: touch dist/.nojekyll
