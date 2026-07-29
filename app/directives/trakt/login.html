@@ -10,12 +10,11 @@
         <input type="password" ng-model="basic.password"/>
       </label>
     </div>
-
     <div class="buttons {{ buttonSize }}">
       <div class="buttons-left">
         <a class="button secondary {{ buttonSize }}"
            ng-class="{disabled: !isCancelEnabled}"
-           ng-click="cancelled()"
+           ng-click="cancelLogin()"
            ng-show="cancelled"
         >
           Cancel
@@ -29,15 +28,33 @@
 
   <div class="pin-authentication" ng-switch-when="pin">
     <div class="fields">
-      <label for="trakt.oauth.code">Authentication PIN <a href="https://trakt.tv/pin/478" target="_blank">Get PIN</a></label>
-      <input id="trakt.oauth.code" type="password" ng-model="pin.code" />
+      <p>Connect this Plex account using Trakt device authentication.</p>
+
+      <div ng-show="device.userCode">
+        <label for="trakt.oauth.device-code">Activation code</label>
+        <input id="trakt.oauth.device-code"
+               type="text"
+               readonly
+               ng-value="device.userCode"
+               onclick="this.select()" />
+
+        <p>
+          <a ng-href="{{ device.activationUrl }}" target="_blank">
+            Open Trakt activation page
+          </a>
+        </p>
+
+        <small ng-show="device.pending">
+          Waiting for authorization. You do not need to paste the code back here.
+        </small>
+      </div>
     </div>
 
     <div class="buttons {{ buttonSize }}">
       <div class="buttons-left">
         <a class="button secondary {{ buttonSize }}"
            ng-class="{disabled: !isCancelEnabled}"
-           ng-click="cancelled()"
+           ng-click="cancelLogin()"
            ng-show="cancelled"
         >
           Cancel
@@ -45,7 +62,7 @@
         <a class="button secondary {{ buttonSize }}" dropdown-toggle="#trakt-mode-dropdown">Mode</a>
       </div>
 
-      <co-button co-size="{{ buttonSize }}" co-callback="pinLogin">Sign in</co-button>
+      <co-button co-size="{{ buttonSize }}" co-callback="deviceLogin">Connect Trakt</co-button>
     </div>
   </div>
 </div>
@@ -55,6 +72,6 @@
     <a ng-click="switch('manual')">Basic</a>
   </li>
   <li ng-class="{active: method == 'pin'}">
-    <a ng-click="switch('pin')">PIN</a>
+    <a ng-click="switch('pin')">Device</a>
   </li>
 </ul>

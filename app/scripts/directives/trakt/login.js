@@ -1,60 +1,117 @@
 'use strict';
 
 angular.module('configurationApp')
-  .directive('coTraktLogin', function(Utils, $http, $q) {
-    var tr = new trakt.Client(
-      'c9ccd3684988a7862a8542ae0000535e0fbd2d1c0ca35583af7ea4e784650a61',
-      'bf00575b1ad252b514f14b2c6171fe650d474091daad5eb6fa890ef24d581f65'
-    );
+  .directive('coTraktLogin', function(Utils, $http, $q, $timeout, $window) {
+    var CLIENT_ID = 'c9ccd3684988a7862a8542ae0000535e0fbd2d1c0ca35583af7ea4e784650a61';
+    var CLIENT_SECRET = 'bf00575b1ad252b514f14b2c6171fe650d474091daad5eb6fa890ef24d581f65';
+    var API_URL = 'https://api.trakt.tv';
 
     function TraktLogin($scope) {
       this.$scope = $scope;
+      this.pollTimer = null;
+      this.pending = null;
+      this.popup = null;
 
-      // Bind scope functions
       var self = this;
 
       $scope.$on('reset', function() {
         self.reset();
       });
+      $scope.$on('$destroy', function() {
+        self.stopPolling('cancelled');
+      });
 
       $scope.basicLogin = function() {
         return self.basicLogin();
       };
-
-      $scope.pinLogin = function() {
-        return self.pinLogin();
+      $scope.deviceLogin = function() {
+        return self.deviceLogin();
       };
-
+      $scope.cancelLogin = function() {
+        self.cancelLogin();
+      };
       $scope.switch = function(method) {
+        self.stopPolling('cancelled');
         $scope.messages = [];
         $scope.method = method;
       };
     }
 
     TraktLogin.prototype.appendMessage = function(type, content) {
-      var $scope = this.$scope;
-
-      $scope.messages.push({
+      this.$scope.messages.push({
         type: type,
         content: content
       });
     };
 
-    TraktLogin.prototype.reset = function() {
-      var $scope = this.$scope;
+    TraktLogin.prototype.resetDevice = function() {
+      this.$scope.device = {
+        userCode: null,
+        verificationUrl: null,
+        activationUrl: null,
+        expiresAt: null,
+        interval: null,
+        pending: false
+      };
+    };
 
-      // Reset state
-      $scope.messages = [];
-      $scope.method = 'pin';
+    TraktLogin.prototype.reset = function() {
+      this.stopPolling('cancelled');
+      this.$scope.messages = [];
+      this.$scope.method = 'pin';
+      this.resetDevice();
+    };
+
+    TraktLogin.prototype.cancelLogin = function() {
+      this.stopPolling('cancelled');
+      this.$scope.messages = [];
+      this.resetDevice();
+      this.$scope.cancelled();
+    };
+
+    TraktLogin.prototype.stopPolling = function(reason) {
+      if(this.pollTimer !== null) {
+        $timeout.cancel(this.pollTimer);
+        this.pollTimer = null;
+      }
+
+      if(this.pending !== null) {
+        this.pending.reject(reason || 'cancelled');
+        this.pending = null;
+      }
+
+      if(Utils.isDefined(this.$scope.device)) {
+        this.$scope.device.pending = false;
+      }
+    };
+
+    TraktLogin.prototype.finish = function(success, value) {
+      var pending = this.pending;
+
+      if(this.pollTimer !== null) {
+        $timeout.cancel(this.pollTimer);
+        this.pollTimer = null;
+      }
+
+      this.pending = null;
+      this.$scope.device.pending = false;
+
+      if(pending === null) {
+        return;
+      }
+
+      if(success) {
+        pending.resolve(value);
+      } else {
+        pending.reject(value);
+      }
     };
 
     TraktLogin.prototype.basicLogin = function() {
       var $scope = this.$scope;
 
-      // Reset messages
       $scope.messages = [];
 
-      // Fire callback
       $scope.basicAuthenticated({
         credentials: $scope.basic
       });
@@ -62,86 +119,193 @@ angular.module('configurationApp')
       return $q.resolve();
     };
 
-    TraktLogin.prototype.pinLogin = function() {
+    TraktLogin.prototype.deviceLogin = function() {
       var $scope = this.$scope;
       var self = this;
 
-      // Reset messages
-      $scope.messages = [];
+      if(this.pending !== null) {
+        return this.pending.promise;
+      }
 
-      // Direct HTTP request to Trakt API instead of using trakt.js library
-      var tokenRequest = {
+      $scope.messages = [];
+      this.resetDevice();
+      $scope.device.pending = true;
+      this.pending = $q.defer();
+
+      // Open synchronously while the click event is active, avoiding popup blockers.
+      this.popup = $window.open('', 'trakt-device-auth');
+
+      $http({
         method: 'POST',
-        url: 'https://api.trakt.tv/oauth/token',
+        url: API_URL + '/oauth/device/code',
         headers: {
           'Content-Type': 'application/json',
           'trakt-api-version': '2',
-          'trakt-api-key': 'c9ccd3684988a7862a8542ae0000535e0fbd2d1c0ca35583af7ea4e784650a61'
+          'trakt-api-key': CLIENT_ID
         },
         data: {
-          code: $scope.pin.code,
-          client_id: 'c9ccd3684988a7862a8542ae0000535e0fbd2d1c0ca35583af7ea4e784650a61',
-          client_secret: 'bf00575b1ad252b514f14b2c6171fe650d474091daad5eb6fa890ef24d581f65',
-          redirect_uri: 'urn:ietf:wg:oauth:2.0:oob',
-          grant_type: 'authorization_code'
+          client_id: CLIENT_ID
         }
-      };
+      }).then(function(response) {
+        var data = response.data || {};
+        var interval = parseInt(data.interval, 10);
+        var expiresIn = parseInt(data.expires_in, 10);
+        var verificationUrl = data.verification_url || 'https://trakt.tv/activate';
 
-      return $http(tokenRequest).then(function(response) {
-        var authorization = response.data;
+        if(!data.device_code || !data.user_code) {
+          self.handleError(data, response.status, 'Trakt returned incomplete device codes');
+          self.closeEmptyPopup();
+          self.finish(false, data);
+          return;
+        }
 
-        // Request account details
-        var settingsRequest = {
-          method: 'GET',
-          url: 'https://api.trakt.tv/users/settings',
-          headers: {
-            'Content-Type': 'application/json',
-            'trakt-api-version': '2',
-            'trakt-api-key': 'c9ccd3684988a7862a8542ae0000535e0fbd2d1c0ca35583af7ea4e784650a61',
-            'Authorization': 'Bearer ' + authorization.access_token
-          }
-        };
+        if(isNaN(interval) || interval < 1) {
+          interval = 5;
+        }
+        if(isNaN(expiresIn) || expiresIn < 1) {
+          expiresIn = 600;
+        }
 
-        return $http(settingsRequest).then(function(settingsResponse) {
-          // the $http call automatically does this digest cycle when the promise gets resolved or rejected. No need to trigger $apply manually
-          //$scope.$apply(function() {
-            // Fire callback
-            $scope.pinAuthenticated({
-              authorization: authorization,
-              credentials: $scope.pin,
-              settings: settingsResponse.data,
-            });
-          //});
-        }, function(error) {
-          //$scope.$apply(function() {
-            self.handleError(error.data, error.status, 'Unable to retrieve account details');
-          //});
+        $scope.device.userCode = data.user_code;
+        $scope.device.verificationUrl = verificationUrl;
+        $scope.device.activationUrl =
+          verificationUrl.replace(/\/$/, '') + '/' + encodeURIComponent(data.user_code);
+        $scope.device.expiresAt = Date.now() + (expiresIn * 1000);
+        $scope.device.interval = interval;
 
-          return $q.reject(error.data, error.status);
-        });
+        self.appendMessage(
+          'info',
+          'Authorize Trakt in the opened page. This screen will detect approval automatically.'
+        );
+
+        if(self.popup && !self.popup.closed) {
+          self.popup.location = $scope.device.activationUrl;
+        }
+
+        self.schedulePoll(data.device_code);
       }, function(error) {
-        //$scope.$apply(function() {
-          self.handleError(error.data, error.status, 'Unable to retrieve token');
-        //});
+        self.handleError(error.data, error.status, 'Unable to generate a Trakt activation code');
+        self.closeEmptyPopup();
+        self.finish(false, error);
+      });
 
-        return $q.reject(error.data, error.status);
+      return this.pending.promise;
+    };
+
+    TraktLogin.prototype.closeEmptyPopup = function() {
+      if(this.popup && !this.popup.closed && this.popup.location.href === 'about:blank') {
+        this.popup.close();
+      }
+    };
+
+    TraktLogin.prototype.schedulePoll = function(deviceCode) {
+      var self = this;
+      var delay = this.$scope.device.interval * 1000;
+
+      if(this.pending === null) {
+        return;
+      }
+
+      if(Date.now() >= this.$scope.device.expiresAt) {
+        this.appendMessage('error', 'The Trakt activation code expired. Start again.');
+        this.finish(false, 'expired');
+        return;
+      }
+
+      this.pollTimer = $timeout(function() {
+        self.poll(deviceCode);
+      }, delay);
+    };
+
+    TraktLogin.prototype.poll = function(deviceCode) {
+      var self = this;
+
+      if(this.pending === null) {
+        return;
+      }
+
+      $http({
+        method: 'POST',
+        url: API_URL + '/oauth/device/token',
+        headers: {
+          'Content-Type': 'application/json',
+          'trakt-api-version': '2',
+          'trakt-api-key': CLIENT_ID
+        },
+        data: {
+          code: deviceCode,
+          client_id: CLIENT_ID,
+          client_secret: CLIENT_SECRET
+        }
+      }).then(function(response) {
+        self.retrieveSettings(response.data);
+      }, function(error) {
+        if(error.status === 400) {
+          // Authorization is still pending.
+          self.schedulePoll(deviceCode);
+          return;
+        }
+
+        if(error.status === 429) {
+          // Trakt asks clients to slow down when polling too quickly.
+          self.$scope.device.interval += 5;
+          self.schedulePoll(deviceCode);
+          return;
+        }
+
+        if(error.status === 404) {
+          self.appendMessage('error', 'Trakt rejected the activation code. Start again.');
+        } else if(error.status === 409) {
+          self.appendMessage('error', 'This activation code was already used. Start again.');
+        } else if(error.status === 410) {
+          self.appendMessage('error', 'The Trakt activation code expired. Start again.');
+        } else if(error.status === 418) {
+          self.appendMessage('error', 'Trakt authorization was denied.');
+        } else {
+          self.handleError(error.data, error.status, 'Unable to check Trakt authorization');
+        }
+
+        self.finish(false, error);
+      });
+    };
+
+    TraktLogin.prototype.retrieveSettings = function(authorization) {
+      var $scope = this.$scope;
+      var self = this;
+
+      $http({
+        method: 'GET',
+        url: API_URL + '/users/settings',
+        headers: {
+          'Content-Type': 'application/json',
+          'trakt-api-version': '2',
+          'trakt-api-key': CLIENT_ID,
+          'Authorization': 'Bearer ' + authorization.access_token
+        }
+      }).then(function(response) {
+        // The obsolete PIN is no longer needed, but keep the existing model/callback
+        // names so the server-side account.update contract remains unchanged.
+        $scope.pin.code = null;
+
+        $scope.pinAuthenticated({
+          authorization: authorization,
+          credentials: $scope.pin,
+          settings: response.data
+        });
+
+        self.finish(true, authorization);
+      }, function(error) {
+        self.handleError(error.data, error.status, 'Authorization succeeded, but account details could not be retrieved');
+        self.finish(false, error);
       });
     };
 
     TraktLogin.prototype.handleError = function(data, status, fallback) {
-      var content = this.getError(data, status, fallback);
-
-      // Update messages
-      this.appendMessage('error', content);
+      this.appendMessage('error', this.getError(data, status, fallback));
     };
 
     TraktLogin.prototype.getError = function(data, status, fallback) {
       if(Utils.isDefined(data)) {
-        // Retrieve error message from `data`
-        if(Utils.isDefined(data.error) && data.error === 'invalid_grant') {
-          return 'Invalid authentication pin provided';
-        }
-
         if(Utils.isDefined(data.error_description)) {
           return data.error_description;
         }
@@ -151,11 +315,10 @@ angular.module('configurationApp')
         }
       }
 
-      if(Utils.isDefined(status)) {
+      if(Utils.isDefined(status) && status !== 0) {
         return 'HTTP Error: ' + status;
       }
 
-      // Fallback to generic message
       return fallback;
     };
 
@@ -169,14 +332,12 @@ angular.module('configurationApp')
 
         basic: '=coBasic',
         basicAuthenticated: '&coBasicAuthenticated',
-
         pin: '=coPin',
         pinAuthenticated: '&coPinAuthenticated'
       },
       templateUrl: 'directives/trakt/login.html',
 
       controller: function($scope) {
-        // Set parameter defaults
         if(typeof $scope.buttonSize === 'undefined') {
           $scope.buttonSize = 'small';
         }
@@ -194,12 +355,11 @@ angular.module('configurationApp')
           };
         }
 
-        // Set initial scope values
         $scope.messages = [];
         $scope.method = 'pin';
 
-        // Construct main controller
         var main = new TraktLogin($scope);
+        main.resetDevice();
       }
     };
   });
