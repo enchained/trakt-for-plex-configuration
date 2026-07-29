@@ -75,6 +75,14 @@ angular.module('configurationApp')
       // Test connection
       var deferred = $q.defer();
 
+      console.log(
+        '[Plex debug] token present:',
+        typeof self.server.token_plex === 'string' &&
+          self.server.token_plex.length > 0,
+        'length:',
+        self.server.token_plex ? self.server.token_plex.length : 0
+      );
+
       client.identity({
         timeout: 1500
       }).then(function(response) {
