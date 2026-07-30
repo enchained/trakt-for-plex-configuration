@@ -44,6 +44,10 @@
         <small class="message {{ message.type }}" ng-repeat="message in account.authentication.messages track by $index">{{ message.content }}</small>
       </div>
 
+      <small class="message info">
+        After connecting or reconnecting Plex or Trakt, don't forget to click the Save icon at the top of the account page.
+      </small>
+
       <co-authentication-tabs
         co-account="account">
       </co-authentication-tabs>
