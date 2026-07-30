@@ -188,7 +188,7 @@ angular.module('configurationApp')
           'Authorize Trakt in the opened page. This screen will detect approval automatically.'
         );
 
-        if(self.popup && !self.popup.closed) {
+        if(self.popup) {
           self.popup.location = $scope.device.activationUrl;
         }
 
@@ -203,8 +203,16 @@ angular.module('configurationApp')
     };
 
     TraktLogin.prototype.closeEmptyPopup = function() {
-      if(this.popup && !this.popup.closed && this.popup.location.href === 'about:blank') {
-        this.popup.close();
+      if(!this.popup) {
+        return;
+      }
+
+      try {
+        if(this.popup.location.href === 'about:blank') {
+          this.popup.close();
+        }
+      } catch(error) {
+        // The popup has already navigated cross-origin.
       }
     };
 
