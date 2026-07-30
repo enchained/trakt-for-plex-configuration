@@ -116,7 +116,7 @@ angular.module('configurationApp')
           error
         );
 
-        deferred.reject(error);
+        deferred.reject();
       });
 
       return deferred.promise;
