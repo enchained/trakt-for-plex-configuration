@@ -84,7 +84,7 @@ angular.module('configurationApp')
       );
 
       client.identity({
-        timeout: 1500
+        timeout: 10000
       }).then(function(response) {
         var data = response.data,
             connectionIdentifier = data.MediaContainer._machineIdentifier;
@@ -108,8 +108,15 @@ angular.module('configurationApp')
 
         // Resolve promise
         deferred.resolve(connection);
-      }, function() {
-        deferred.reject();
+      }, function(error) {
+        console.warn(
+          '[%s] Connection failed: %s',
+          self.server.identifier,
+          connection.uri,
+          error
+        );
+
+        deferred.reject(error);
       });
 
       return deferred.promise;
