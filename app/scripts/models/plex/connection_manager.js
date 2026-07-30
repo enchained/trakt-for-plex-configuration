@@ -101,13 +101,6 @@ angular.module('configurationApp')
         // Resolve promise
         deferred.resolve(connection);
       }, function(error) {
-        console.warn(
-          '[%s] Connection failed: %s',
-          self.server.identifier,
-          connection.uri,
-          error
-        );
-
         deferred.reject();
       });
 
