@@ -3,7 +3,13 @@
     <span us-spinner="{color: '#FFF', length: 0, lines: 7, radius: 15, width: 10}"></span>
   </div>
   <div class="code-value" ng-switch-when="check">
-    {{ current.code }}
+    <span>{{ current.code }}</span>
+    <button
+      type="button"
+      class="button tiny secondary"
+      ng-click="copyCode()">
+      Copy
+    </button>
   </div>
   <div class="code-error" ng-switch-when="error">
     <b>Error</b><br/>

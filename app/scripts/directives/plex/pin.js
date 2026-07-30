@@ -1,7 +1,7 @@
 'use strict';
 
 angular.module('configurationApp')
-  .directive('coPlexPin', function($timeout) {
+  .directive('coPlexPin', function($timeout, $window) {
     var intervalMinimum = 2000,
         intervalMaximum = 10000;
 
@@ -14,6 +14,16 @@ angular.module('configurationApp')
 
       // Bind scope functions
       var self = this;
+
+      $scope.copyCode = function() {
+        if(!$scope.current || !$scope.current.code) {
+          return;
+        }
+
+        $window.navigator.clipboard.writeText(
+          String($scope.current.code)
+        );
+      };
 
       $scope.$on('activate', function() {
         // Create new pin
