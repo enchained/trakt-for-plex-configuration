@@ -31,13 +31,20 @@
       <p>Connect this Plex account using Trakt device authentication.</p>
 
       <div ng-show="device.userCode">
-        <label for="trakt.oauth.device-code">Activation code</label>
+        <label for="trakt.oauth.device-code">
+          Confirm that Trakt shows this code
+        </label>
         <input id="trakt.oauth.device-code"
                type="text"
                readonly
                ng-value="device.userCode"
                onclick="this.select()" />
-
+        <button
+          type="button"
+          class="button tiny secondary"
+          ng-click="copyDeviceCode()">
+          Copy code
+        </button>
         <p>
           <a ng-href="{{ device.activationUrl }}" target="_blank">
             Open Trakt activation page

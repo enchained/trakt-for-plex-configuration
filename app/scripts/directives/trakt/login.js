@@ -14,6 +14,16 @@ angular.module('configurationApp')
 
       var self = this;
 
+      $scope.copyDeviceCode = function() {
+        if(!$scope.device || !$scope.device.userCode) {
+          return;
+        }
+
+        return $window.navigator.clipboard.writeText(
+          String($scope.device.userCode)
+        );
+      };
+
       $scope.$on('reset', function() {
         self.reset();
       });
